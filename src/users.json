@@ -1,0 +1,17 @@
+{
+  "newstudent@mergington.edu": {
+    "email": "newstudent@mergington.edu",
+    "password_hash": "$2b$12$AEYFdYrYpN.EiDzjlYxzXuFprrwpByZqk8FtIUMQOHwXwpemj5tDC",
+    "created_at": "2026-09-01T13:33:10.862494Z"
+  },
+  "wrongpass@mergington.edu": {
+    "email": "wrongpass@mergington.edu",
+    "password_hash": "$2b$12$FQ0.Mc0LoT74iO.AdY.gj.jpX1ZA4gFn1MGAtqEAj.iJd89ZYFPS.",
+    "created_at": "2026-09-01T13:33:11.397732Z"
+  },
+  "duplicate@mergington.edu": {
+    "email": "duplicate@mergington.edu",
+    "password_hash": "$2b$12$9cw0uljWywU9dIVEpYWYaO1H9lBE7t7i0KnWZ5z9xqf3LzRpBo7c.",
+    "created_at": "2026-09-01T13:33:11.920913Z"
+  }
+}

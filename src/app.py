@@ -5,11 +5,16 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+import json
 import os
+import uuid
 from pathlib import Path
+
+import bcrypt
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
@@ -18,6 +23,118 @@ app = FastAPI(title="Mergington High School API",
 current_dir = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
           "static")), name="static")
+
+USERS_FILE = current_dir / "users.json"
+SESSIONS = {}
+
+
+class AuthRequest(BaseModel):
+    email: str
+    password: str
+
+
+def _load_users():
+    if not USERS_FILE.exists():
+        USERS_FILE.write_text("{}", encoding="utf-8")
+        return {}
+
+    try:
+        with USERS_FILE.open("r", encoding="utf-8") as file:
+            return json.load(file) or {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _save_users(users):
+    USERS_FILE.write_text(json.dumps(users, indent=2), encoding="utf-8")
+
+
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _verify_password(password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
+
+
+def _require_session(authorization: str | None = Header(default=None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+
+    email = SESSIONS.get(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    return {"email": email, "token": token}
+
+
+@app.post("/auth/register")
+def register_user(payload: AuthRequest):
+    email = payload.email.strip().lower()
+    password = payload.password
+
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Valid email is required")
+
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
+
+    users = _load_users()
+    if email in users:
+        raise HTTPException(status_code=409, detail="User already exists")
+
+    users[email] = {
+        "email": email,
+        "password_hash": _hash_password(password),
+        "created_at": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+    }
+    _save_users(users)
+
+    return {"email": email, "message": "User registered successfully"}
+
+
+@app.post("/auth/login")
+def login_user(payload: AuthRequest):
+    email = payload.email.strip().lower()
+    users = _load_users()
+    user = users.get(email)
+
+    if not user or not _verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = uuid.uuid4().hex
+    SESSIONS[token] = email
+
+    return {
+        "email": email,
+        "token": token,
+        "message": "Login successful",
+    }
+
+
+@app.get("/auth/me")
+def get_current_user(session=Header(default=None)):
+    auth = _require_session(session)
+    return {"email": auth["email"]}
+
+
+@app.post("/auth/logout")
+def logout_user(authorization: str | None = Header(default=None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+
+    if token in SESSIONS:
+        del SESSIONS[token]
+
+    return {"message": "Logged out successfully"}
 
 # In-memory activity database
 activities = {
